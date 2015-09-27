@@ -1,0 +1,88 @@
+---
+title: "Course Project PML"
+author: "Rajiv Sharma"
+date: "September 25, 2015"
+output: html_document
+---
+
+Reading the Training and Testing files
+```{r}
+library(caret); library(kernlab); library(rattle)
+training <- read.csv("~/Desktop/Data Science/Coursera/Practical Machine Learning/pml-training.csv")
+testing <- read.csv("~/Desktop/Data Science/Coursera/Practical Machine Learning/pml-testing.csv")
+```
+Extracting the raw data from training set
+
+```{r}
+trainingraw <- training[,c(7, 8, 9, 10, 11, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 60, 61, 62, 63, 64, 65, 66, 67, 68, 84, 85, 86, 102, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 140, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160)]
+```
+Creating Data Partitions
+
+```{r}
+inTrain <- createDataPartition(y=trainingraw$classe, p=0.70, list=FALSE)
+rawTrain <- trainingraw[inTrain,]
+rawTest <- trainingraw[-inTrain,]
+```
+Using "glm" to train the data and preprocessing the data using Principal Component Analysis, I realize that glm doesn't apply to more than 2 factor outcomes...
+
+Applying Tree Analysis to the training set, we get:
+```{r}
+modFit <- train(classe ~., method="rpart", data=rawTrain)
+print(modFit$finalModel)
+fancyRpartPlot(modFit$finalModel)
+```
+Applying the Tree Analysis to the rawTest data from the training set and checking its Accuracy:
+
+```{r}
+pred <- predict(modFit, newdata=rawTest)
+confusionMatrix(rawTest$classe, pred)
+```
+This model has pretty low accuracy (0.55) when applied to the rawTest dataset. Sensitivity is poor...
+
+We need to apply the Random Forest Analysis technique to the training dataset to see if we can improve its accuracy:
+
+```{r}
+library("randomForest")
+library("caret")
+library(foreach)
+x <- rawTrain[,-54]
+y <- rawTrain[,54]
+m <- train(x,y,method="parRF", tuneGrid=data.frame(mtry = 3))
+```           
+Applying the random forest model to the testing set "rawTest" created out of the training set:
+
+```{r}
+pred <- predict(m,rawTest)
+rawTest$predRight <- pred==rawTest$classe
+confusionMatrix(rawTest$classe, pred)
+```
+
+The accuracy is very high on the rawTest set - we get near perfect results
+Now applying the model m to our 20 cases from the testing set:
+
+Preparing the testing set to include only the raw values of the sensors just like in the trainingraw set:
+
+```{r}
+testingraw <- testing[,c(7, 8, 9, 10, 11, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 60, 61, 62, 63, 64, 65, 66, 67, 68, 84, 85, 86, 102, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 140, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160)]
+head(testingraw)
+```
+Running the model on this raw testing set:
+
+```{r}
+finalprediction <- predict(m,testingraw)
+data.frame(finalprediction)
+```
+Creating the text files for the predictions:
+
+```{r, echo=FALSE}
+answers = c("B", "A", "B", "A", "A", "E", "D", "B", "A", "A", "B", "C", "B", "A", "E", "E", "A", "B", "B", "B")
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```

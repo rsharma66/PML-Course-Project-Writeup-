@@ -1,0 +1,91 @@
+"Course Project PML"
+author: "Rajiv Sharma"
+date: "September 25, 2015"
+
+Reading the Training and Testing files
+```{r}
+library(caret); library(kernlab); library(rattle)
+training <- read.csv("~/Desktop/Data Science/Coursera/Practical Machine Learning/pml-training.csv")
+testing <- read.csv("~/Desktop/Data Science/Coursera/Practical Machine Learning/pml-testing.csv")
+```
+Extracting the raw data from training set. In doing so, we have only kept the raw measurements from each of belt, forearm, arm, dumbbell sensors, excluding the user_name, date and time stamps, and all the summarized values that were summarizing by each participant. From 160 variables we have reduced the variables to 54 (including the outcome.)
+
+```{r}
+trainingraw <- training[,c(7, 8, 9, 10, 11, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 60, 61, 62, 63, 64, 65, 66, 67, 68, 84, 85, 86, 102, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 140, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160)]
+```
+Creating Data Partitions - We chose to split the training dataset into rawTrain and rawTest - a 70%-30% split.
+
+```{r}
+inTrain <- createDataPartition(y=trainingraw$classe, p=0.70, list=FALSE)
+rawTrain <- trainingraw[inTrain,]
+rawTest <- trainingraw[-inTrain,]
+```
+Using "glm" to train the data and preprocessing the data using Principal Component Analysis, we realize that glm doesn't apply to more than 2 factor outcomes.
+
+Therefore, we applied "Tree Analysis"" to the training set:
+```{r}
+modFit <- train(classe ~., method="rpart", data=rawTrain)
+print(modFit$finalModel)
+fancyRpartPlot(modFit$finalModel)
+```
+For Cross-Validation, we applied the Tree Analysis to the rawTest data from the training set and checked its Accuracy:
+
+```{r}
+pred <- predict(modFit, newdata=rawTest)
+confusionMatrix(rawTest$classe, pred)
+```
+This model has pretty low accuracy (~ 0.57) when applied to the rawTest dataset. Sensitivity is very poor as well...
+
+We need to apply the Random Forest Analysis technique to the training dataset to see if we can improve its accuracy:
+
+```{r}
+library("randomForest")
+library("caret")
+library(foreach)
+x <- rawTrain[,-54]
+y <- rawTrain[,54]
+m <- train(x,y,method="parRF", tuneGrid=data.frame(mtry = 3))
+```           
+And for cross-validation we applied the random forest model to the testing set "rawTest" created out of the training set:
+
+```{r}
+pred <- predict(m,rawTest)
+rawTest$predRight <- pred==rawTest$classe
+confusionMatrix(rawTest$classe, pred)
+```
+
+The accuracy is very high on the rawTest set (the cross-validation) - we get near perfect results.
+
+For out of sample data, we could expect very high Accuracy (~99.7%), Sensitivity of 0.9988 and Specificity of near 1.
+
+Now applying the model m to our 20 cases from the testing set:
+
+Preparing the testing set to include only the raw values of the sensors just like in the trainingraw set:
+
+```{r}
+testingraw <- testing[,c(7, 8, 9, 10, 11, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 60, 61, 62, 63, 64, 65, 66, 67, 68, 84, 85, 86, 102, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 140, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160)]
+head(testingraw)
+```
+Running the random forest model "m" on this raw testing set of 20 observations:
+
+```{r}
+finalprediction <- predict(m,testingraw)
+data.frame(finalprediction)
+```
+We get 100% accuracy in our test predictions when checked on Course Project submissions.
+The predictions are: 1. "B", 2. "A", 3. "B", 4. "A", 5. "A", 6. "E", 7. "D", 8. "B", 9. "A", 10. "A", 11. "B", 12. "C", 13. "B", 14. "A", 15. "E", 16. "E", 17. "A", 18. "B", 19. "B", 20. "B"
+
+Creating the text files for the predictions:
+
+```{r, echo=FALSE}
+answers = c("B", "A", "B", "A", "A", "E", "D", "B", "A", "A", "B", "C", "B", "A", "E", "E", "A", "B", "B", "B")
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
